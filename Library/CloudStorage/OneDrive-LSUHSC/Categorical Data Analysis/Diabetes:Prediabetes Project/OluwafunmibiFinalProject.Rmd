@@ -1,0 +1,1513 @@
+---
+title: "Modeling the Determinants of Diabetes and Prediabetes Using the 2015 CDC Behavioral Risk Factor Surveillance System (BRFSS) Data"
+author: "Oluwafunmibi Fasanya"
+date: "2025-10-22"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+always_allow_html: true
+---
+
+```{r}
+# Load required packages
+library(dplyr)
+library(skimr)
+library(kableExtra)
+library(tidyr)
+library(janitor)
+library(gtsummary)
+library(ggplot2)
+library(broom)
+library(patchwork)
+library(scales)
+
+
+```
+
+```{r}
+dbts_df <- read.csv("diabetes_012_health_indicators_BRFSS2015 2.csv")
+```
+
+```{r}
+str(dbts_df)
+```
+
+```{r}
+summary(dbts_df)
+```
+```{r}
+dbts_df <- dbts_df %>%
+  mutate(Diabetes_binary = ifelse(Diabetes_012 == 0, 0, 1))
+```
+
+```{r}
+# Convert variables to factors with labels
+
+dbts_df <- dbts_df %>%
+  mutate(
+    Diabetes_binary = factor(Diabetes_binary,
+                             levels = c(0, 1),
+                             labels = c("No diabetes", "Prediabetes/Diabetes")),
+
+    Diabetes_012 = factor(Diabetes_012,
+                             levels = c(0, 1, 2),
+                             labels = c("No diabetes", "Prediabetes", "Diabetes")),
+    
+    HighBP = factor(HighBP, levels = c(0, 1), labels = c("No high BP", "High BP")),
+    HighChol = factor(HighChol, levels = c(0, 1), labels = c("No high cholesterol", "High cholesterol")),
+    CholCheck = factor(CholCheck, levels = c(0, 1), labels = c("No check in 5 years", "Checked in 5 years")),
+    
+    Smoker = factor(Smoker, levels = c(0, 1), labels = c("No", "Yes")),
+    Stroke = factor(Stroke, levels = c(0, 1), labels = c("No", "Yes")),
+    HeartDiseaseorAttack = factor(HeartDiseaseorAttack, levels = c(0, 1), labels = c("No", "Yes")),
+    PhysActivity = factor(PhysActivity, levels = c(0, 1), labels = c("No", "Yes")),
+    Fruits = factor(Fruits, levels = c(0, 1), labels = c("No", "Yes")),
+    Veggies = factor(Veggies, levels = c(0, 1), labels = c("No", "Yes")),
+    HvyAlcoholConsump = factor(HvyAlcoholConsump, levels = c(0, 1), labels = c("No", "Yes")),
+    AnyHealthcare = factor(AnyHealthcare, levels = c(0, 1), labels = c("No", "Yes")),
+    NoDocbcCost = factor(NoDocbcCost, levels = c(0, 1), labels = c("No", "Yes")),
+    DiffWalk = factor(DiffWalk, levels = c(0, 1), labels = c("No", "Yes")),
+    Sex = factor(Sex, levels = c(0, 1), labels = c("Female", "Male")),
+    
+    GenHlth_reversed = 6 - as.numeric(GenHlth),
+    
+    # Create ordered factor with proper labels
+    GenHlth = factor(GenHlth_reversed,
+                     levels = 1:5,
+                     labels = c("Poor", "Fair", "Good", "Very good", "Excellent"),
+                     ordered = TRUE),
+    
+    Age = factor(Age,
+                 levels = 1:13,
+                 labels = c("18-24", "25-29", "30-34", "35-39", "40-44",
+                            "45-49", "50-54", "55-59", "60-64", "65-69",
+                            "70-74", "75-79", "80+"), ordered = TRUE),
+    
+    Education = factor(Education,
+                       levels = 1:6,
+                       labels = c("Never attended school or only kindergarten", "Elementary", "Some high school",
+                                  "High school graduate", "Some college",
+                                  "College graduate"),ordered = TRUE),
+    
+    Income = factor(Income,
+                    levels = 1:8,
+                    labels = c("<$10k", "$10k-$15k", "$15k-$20k", "$20k-$25k",
+                               "$25k-$35k", "$35k-$50k", "$50k-$75k", "$75k+"),ordered = TRUE)
+  )
+
+```
+
+```{r}
+summary(dbts_df)
+```
+
+```{r}
+# Separate categorical and continuous variables
+cat_vars <- c("Diabetes_binary", "Diabetes_012", "HighBP", "HighChol", "CholCheck", "Smoker",
+              "Stroke", "HeartDiseaseorAttack", "PhysActivity", "Fruits", "Veggies",
+              "HvyAlcoholConsump", "AnyHealthcare", "NoDocbcCost","GenHlth", "DiffWalk",
+              "Sex", "Age", "Education", "Income")
+
+cont_vars <- c("BMI", "MentHlth", "PhysHlth")
+
+# ---- Categorical Variables Summary ----
+cat_summary <- dbts_df %>%
+  dplyr::select(all_of(cat_vars)) %>%
+  skimr::skim() %>%
+  dplyr::select(skim_variable, n_missing, complete_rate, 
+                factor.n_unique, factor.top_counts) %>%
+  dplyr::rename(
+    Variable = skim_variable,
+    `Missing (n)` = n_missing,
+    `Complete Rate` = complete_rate,
+    `Unique Levels` = factor.n_unique,
+    `Top Levels (Count)` = factor.top_counts
+  )
+```
+
+```{r}
+
+# ---- Continuous Variables Summary ----
+cont_summary <- dbts_df %>%
+  dplyr::select(all_of(cont_vars)) %>%
+  skimr::skim() %>%
+  dplyr::select(skim_variable, n_missing, numeric.mean, numeric.sd,
+                numeric.p0, numeric.p25, numeric.p50, numeric.p75, numeric.p100) %>%
+  dplyr::rename(
+    Variable = skim_variable,
+    `Missing (n)` = n_missing,
+    Mean = numeric.mean,
+    SD = numeric.sd,
+    Min = numeric.p0,
+    Q1 = numeric.p25,
+    Median = numeric.p50,
+    Q3 = numeric.p75,
+    Max = numeric.p100
+  )
+
+```
+
+
+
+```{r}
+# ---- Formatted tables ----
+cat_summary %>%
+  kable("html", caption = "Summary of Categorical Variables") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE, position = "center")
+```
+
+```{r}
+cont_summary %>%
+  kable("html", caption = "Summary of Continuous Variables") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE, position = "center")
+
+```
+
+```{r}
+# ANOVA function for continuous variables
+anova_test <- function(data, variable, by, ...) {
+  formula <- as.formula(paste(variable, "~", by))
+  aov_model <- aov(formula, data = data)
+  broom::tidy(aov_model) %>%
+    dplyr::slice(1) %>%     # Keep only the main term
+    dplyr::select(p.value)
+}
+
+# Define continuous variables
+cont_vars <- c("BMI", "MentHlth", "PhysHlth")
+
+# APA-style summary table
+apa_table <- dbts_df %>%
+  tbl_summary(
+    by = Diabetes_012,
+    type = list(
+      all_of(cont_vars) ~ "continuous"
+    ),
+    statistic = list(
+      all_categorical() ~ "{n} ({p}%)",
+      all_continuous() ~ "{mean} (±{sd})"
+    ),
+    missing = "no"
+  ) %>%
+  add_overall() %>%
+  add_p(
+    test = list(
+      all_categorical() ~ "chisq.test",
+      all_of(cont_vars) ~ anova_test
+    )
+  ) %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_spanning_header(
+    c("stat_1", "stat_2", "stat_3") ~ "**Diabetes Status**"
+  ) %>%
+  bold_labels()%>%
+  modify_footnote(
+    all_stat_cols() ~ "1 n (%); Mean (±SD)",
+    p.value ~ "2 Pearson’s Chi-squared test for categorical variables; One-way ANOVA for continuous variables."
+  )
+
+apa_table
+
+
+```
+```{r}
+apa_flex <- as_flex_table(apa_table)
+apa_flex <- flextable::set_table_properties(apa_flex, width = 1, layout = "autofit")
+
+```
+
+
+```{r}
+library(gtsummary)
+library(openxlsx)
+
+# Convert gtsummary table to a data frame
+apa_df <- as_tibble(apa_table, col_labels = TRUE)
+
+# Save to Excel
+write.xlsx(apa_df, "Diabetes_Summary_Table.xlsx", rowNames = FALSE)
+
+```
+
+## Visualizations
+
+```{r}
+## Sex: Side-by-Side Bar Plot ---
+p_sex <- dbts_df %>%
+  count(Sex, Diabetes_012) %>%
+  group_by(Sex) %>%
+  mutate(prop = n / sum(n)) %>%
+  ggplot(aes(x = Sex, y = prop, fill = Diabetes_012)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual(values = fill_colors) +
+  labs(title = "Sex Distribution by Diabetes Status",
+       x = NULL, y = "Percentage") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+## Education: Ordered Horizontal Stacked Bar Plot ---
+p_edu <- dbts_df %>%
+  count(Education, Diabetes_012) %>%
+  group_by(Education) %>%
+  mutate(prop = n / sum(n)) %>%
+  ggplot(aes(x = Education, y = prop, fill = Diabetes_012)) +
+  geom_col(position = "fill") +
+  coord_flip() +   # 🔹 horizontal layout
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual(values = fill_colors) +
+  labs(title = "Education Level by Diabetes Status",
+       x = NULL, y = "Proportion") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.y = element_text(size = 10),
+        legend.position = "none")
+
+## Income: Ordered Horizontal Stacked Bar Plot ---
+p_income <- dbts_df %>%
+  count(Income, Diabetes_012) %>%
+  group_by(Income) %>%
+  mutate(prop = n / sum(n)) %>%
+  ggplot(aes(x = Income, y = prop, fill = Diabetes_012)) +
+  geom_col(position = "fill") +
+  coord_flip() +   # 🔹 horizontal layout
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual(values = fill_colors) +
+  labs(title = "Household Income by Diabetes Status",
+       x = NULL, y = "Proportion") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.y = element_text(size = 10),
+        legend.position = "bottom")
+p_sex
+p_edu
+p_income
+ggsave("Sex_Dist.png", plot = p_sex, width = 8, height = 6, dpi = 300)
+ggsave("Edu_Dist.png", plot = p_edu, width = 8, height = 6, dpi = 300)
+ggsave("Income_Dist.png", plot = p_income, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+p1 <- dbts_df %>%
+  count(Age, Diabetes_012) %>%
+  ggplot(aes(x = Age, y = n, fill = Diabetes_012)) +
+  geom_col(position = "fill") +
+  scale_fill_manual(values = c( "#27ae60", "#f39c12", "#c0392b" )) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Age Distribution", y = "Percentage", x = NULL) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "right")
+
+p1
+
+ggsave("Age_Distribution.png", plot = p1, width = 8, height = 6, dpi = 300)
+
+```
+
+```{r}
+sex_age_diabetes <- dbts_df %>%
+  group_by(Sex, Age) %>%
+  summarise(diabetes_rate = mean(Diabetes_012 != "No diabetes"),
+            prediabetes_rate = mean(Diabetes_012 == "Prediabetes"),
+            diabetes_only = mean(Diabetes_012 == "Diabetes"),
+            .groups = "drop")
+
+p4 <- ggplot(sex_age_diabetes, aes(x = Age, y = diabetes_rate, 
+                                    color = Sex, group = Sex)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("#e91e63", "#2196f3")) +
+  labs(title = "Sex × Age: Diabetes/Prediabetes Rate by Sex Over Age",
+       x = "Age Group", y = "Rate of Diabetes/Prediabetes") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 45, hjust = 1))
+p4
+
+ggsave("SexAge.png", plot = p4, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+ses_data <- dbts_df %>%
+  group_by(Income, Education) %>%
+  summarise(
+    diabetes_rate = mean(Diabetes_012 != "No diabetes"),
+    n = n(),
+    .groups = "drop"
+  ) 
+
+p6 <- ggplot(ses_data, aes(x = Income, y = Education, fill = diabetes_rate)) +
+  geom_tile(color = "white", size = 1.5) +
+  geom_text(aes(label = sprintf("%.1f%%", diabetes_rate * 100)),
+            color = "white", fontface = "bold", size = 3) +
+  scale_fill_gradient2(low = "#27ae60", mid = "#f39c12", high = "#c0392b",
+                      midpoint = 0.12, labels = scales::percent,
+                      name = "Diabetes\nRate") +
+  labs(title = "The Social Determinants: Income and Education Impact on Diabetes/Prediabetes",
+       subtitle = "Lower income + lower education = higher diabetes rates",
+       x = "Household Income", 
+       y = "Education Level") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 9),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 7),
+        axis.text.y = element_text(size = 7))
+
+p6
+
+ggsave("SocialDeterminant.png", plot = p6, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+#How Conditions Accumulate
+health_cas <- dbts_df %>%
+  mutate(risk_count = (HighBP == "High BP") + 
+                      (HighChol == "High cholesterol") + 
+                      (HeartDiseaseorAttack == "Yes") +
+                      (Smoker == "Yes") +
+                      (BMI > 30)) %>%
+  group_by(risk_count, Diabetes_012) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(risk_count) %>%
+  mutate(prop = n / sum(n))
+
+p5 <- ggplot(health_cas, aes(x = factor(risk_count), y = prop, 
+                                  fill = Diabetes_012)) +
+  geom_col(width = 0.7, color = "white", size = 0.5) +
+  geom_text(aes(label = scales::percent(prop, accuracy = 1)),
+            position = position_stack(vjust = 0.5), 
+            color = "white", fontface = "bold", size = 4) +
+  scale_fill_manual(values = c("#27ae60", "#f39c12", "#c0392b"),
+                    name = "Status") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0)) +
+  labs(title = "How Multiple Risk Factors Compound",
+       subtitle = "Risk factors: High BP, High Cholesterol, Heart Disease, Smoking, Obesity (BMI>30)",
+       x = "Number of Risk Factors Present", 
+       y = "Percentage of Group") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14),
+        legend.position = "bottom",
+        panel.grid.major.x = element_blank())
+p5
+
+ggsave("Health.png", plot = p5, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+prevention <- dbts_df %>%
+  mutate(
+    risk_level = case_when(
+      HighBP == "High BP" & HighChol == "High cholesterol" & BMI > 30 ~ "Very High Risk",
+      (HighBP == "High BP" | HighChol == "High cholesterol") & BMI > 30 ~ "High Risk",
+      HighBP == "High BP" | HighChol == "High cholesterol" | BMI > 30 ~ "Moderate Risk",
+      TRUE ~ "Low Risk"
+    ),
+    # Convert to factor with proper ordering
+    risk_level = factor(risk_level, 
+                       levels = c("Low Risk", "Moderate Risk", "High Risk", "Very High Risk"))
+  ) %>%
+  group_by(risk_level, PhysActivity, Diabetes_012) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(risk_level, PhysActivity) %>%
+  mutate(prop = n / sum(n)) %>%
+  filter(Diabetes_012 == "Diabetes")
+
+p7 <- ggplot(prevention, aes(x = risk_level, y = prop, fill = PhysActivity)) +
+  geom_col(position = "dodge", width = 0.7) +
+  geom_text(aes(label = scales::percent(prop, accuracy = 0.1)),
+            position = position_dodge(width = 0.7), vjust = -0.5,
+            fontface = "bold", size = 4) +
+  scale_fill_manual(values = c("#e74c3c", "#27ae60"),
+                    name = "Physical Activity\nin Past Month") +
+  scale_y_continuous(labels = scales::percent, expand = expansion(mult = c(0, 0.1))) +
+  labs(title = "Does Exercise Help? Physical Activity Impact Across Risk Levels",
+       subtitle = "Even in high-risk groups, physical activity reduces diabetes prevalence",
+       x = "Metabolic Risk Level", 
+       y = "Diabetes Rate") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 13),
+        legend.position = "bottom",
+        axis.text.x = element_text(size = 10),
+        panel.grid.major.x = element_blank())
+
+p7
+
+ggsave("Exercisehelps.png", plot = p7, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+# Select key risk factors
+risk_factors <- c("HighBP", "HighChol", "Smoker", "PhysActivity", 
+                  "Fruits", "Veggies", "HeartDiseaseorAttack")
+
+# Prepare data
+plot_data <- dbts_df %>%
+  dplyr::select(Diabetes_012, all_of(risk_factors)) %>%
+  pivot_longer(-Diabetes_012, names_to = "Risk_Factor", values_to = "Status") %>%
+  filter(Status == "Yes" | Status == "High BP" | Status == "High cholesterol") %>%
+  count(Diabetes_012, Risk_Factor) %>%
+  group_by(Risk_Factor) %>%
+  mutate(
+    percentage = n / sum(n) * 100,
+    Risk_Factor = case_when(
+      Risk_Factor == "HighBP" ~ "High Blood Pressure",
+      Risk_Factor == "HighChol" ~ "High Cholesterol",
+      Risk_Factor == "HeartDiseaseorAttack" ~ "Heart Disease",
+      Risk_Factor == "PhysActivity" ~ "Physical Activity",
+      TRUE ~ Risk_Factor
+    )
+  )
+
+# Create plot
+p2 <- ggplot(plot_data, aes(x = reorder(Risk_Factor, percentage), y = percentage, 
+                      fill = Diabetes_012)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f%%", percentage)), 
+            position = position_dodge(width = 0.7), 
+            vjust = 0.5, size = 2.5) +
+  scale_fill_manual(values = c( "#27ae60", "#f39c12", "#c0392b"),
+                    name = "Diabetes Status") +
+  labs(
+    title = "Prevalence of Risk Factors by Diabetes Status",
+    subtitle = "Comparison of key health indicators between groups",
+    x = "Risk Factor",
+    y = "Percentage (%)",
+    caption = "Data: Diabetes Health Indicators Dataset"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12, color = "gray40"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top",
+    panel.grid.minor = element_blank()
+  ) +
+  coord_flip()
+
+p2
+
+ggsave("Prevalence_Riskfactor.png", plot = p2, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+# Create summary data
+heatmap_data <- dbts_df %>%
+  count(Age, GenHlth, Diabetes_012) %>%
+  group_by(Age, Diabetes_012) %>%
+  mutate(percentage = n / sum(n) * 100) %>%
+  ungroup()
+
+# Create heatmap
+p3 <- ggplot(heatmap_data, aes(x = Age, y = GenHlth, fill = percentage)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = sprintf("%.0f%%", percentage)), 
+            color = "white", size = 2.5, fontface = "bold") +
+  scale_fill_gradient2(
+    low = "#27ae60", 
+    mid = "#f39c12", 
+    high = "#c0392b",
+    midpoint = 25,
+    name = "Percentage (%)"
+  ) +
+  facet_wrap(~ Diabetes_012, ncol = 1) +
+  labs(
+    title = "General Health Status Distribution by Age and Diabetes",
+    subtitle = "Darker colors indicate higher percentages within each age group",
+    x = "Age Group",
+    y = "General Health Status",
+    caption = "Data: Diabetes Health Indicators Dataset"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 11, color = "gray40"),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+    axis.text.y = element_text(size = 10),
+    strip.text = element_text(face = "bold", size = 12),
+    strip.background = element_rect(fill = "gray90", color = NA),
+    legend.position = "right",
+    panel.grid = element_blank()
+  )
+p3
+ggsave("Heatmap.png", plot = p3, width = 8, height = 6, dpi = 300)
+```
+## Logistic Regression
+
+### Purposeful Selection of Explanatory Variables 
+
+#### Construct an initial main effects model with known important Xs and statistically significant ones
+
+```{r}
+#Return these variables to factor
+dbts_df <- dbts_df %>%
+  mutate(
+    GenHlth = factor(GenHlth, ordered = FALSE),
+    Age = factor(Age, ordered = FALSE),
+    Education = factor(Education, ordered = FALSE),
+    Income = factor(Income, ordered = FALSE)
+  )
+
+```
+
+```{r}
+fit1 <- glm(Diabetes_binary~HighBP + HighChol + CholCheck + BMI + Smoker + 
+    Stroke + HeartDiseaseorAttack + PhysActivity + Fruits + Veggies + 
+    HvyAlcoholConsump + AnyHealthcare + NoDocbcCost + GenHlth + 
+    MentHlth + PhysHlth + DiffWalk + Sex + Age + Education + 
+    Income, data = dbts_df, family = binomial)
+#summary(fit1)
+```
+
+```{r}
+library(car)
+Anova(fit1) # likelihood-ratio tests for individual explanatory variables
+```
+
+
+
+```{r}
+#Treating them as numeric
+dbts_df <- dbts_df %>%
+  mutate(
+    GenHlth_num = as.numeric(GenHlth),
+    Age_num = as.numeric(Age),
+    Education_num = as.numeric(Education),
+    Income_num = as.numeric(Income)
+  )
+
+```
+
+
+```{r}
+fit2 <- glm(Diabetes_binary ~ HighBP + HighChol + CholCheck + BMI + Smoker + 
+    Stroke + HeartDiseaseorAttack + PhysActivity + Fruits + Veggies + 
+    HvyAlcoholConsump + AnyHealthcare + NoDocbcCost + GenHlth_num + 
+    MentHlth + PhysHlth + DiffWalk + Sex + Age_num + Education_num + Income_num, 
+    data = dbts_df, family = binomial)
+#summary(fit2)
+```
+
+```{r}
+library(car)
+Anova(fit2) # likelihood-ratio tests for individual explanatory variables
+```
+
+
+```{r}
+anova(fit1, fit2, test="Chisq")
+```
+Model 1 fits better (also has the least AIC value), thus we use the the ordered variables as a factor instead.
+
+
+#### Conduct backward elimination and retain a variable if it is significant at a more stringent level or it shows evidence of being a relevant confounder
+
+```{r}
+fit_backward <- step(fit1, direction = "backward")
+```
+
+```{r}
+# Display summary of the final model
+summary(fit_backward)
+```
+
+#### Check for plausible interactions among variables in the model
+```{r}
+fit1_int <- update(fit1, . ~ . + BMI:Age + GenHlth:PhysHlth + HighChol:HeartDiseaseorAttack + Sex:Age + BMI:PhysActivity)
+```
+
+
+```{r}
+fit_backward <- step(fit1_int, direction = "backward")
+```
+
+```{r}
+#Final Model 
+fit1_int_final <- glm(Diabetes_binary ~ HighBP + HighChol + CholCheck + BMI + Smoker + 
+    Stroke + HeartDiseaseorAttack + PhysActivity + Fruits + Veggies +  HvyAlcoholConsump + NoDocbcCost + GenHlth + PhysHlth + DiffWalk + Sex + Age + Education + Income + BMI:Age + GenHlth:PhysHlth + HighChol:HeartDiseaseorAttack + Sex:Age + BMI:PhysActivity  + HvyAlcoholConsump:Age + Smoker:Age, 
+    data = dbts_df, family = binomial)
+```
+
+```{r}
+summary(fit1_int_final)
+```
+
+#### Follow up diagnostic investigation
+```{r}
+anova(fit1, fit1_int_final, test="Chisq")
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Extract coefficients, standard errors, and p-values
+coef_summary <- summary(fit1_int_final)$coefficients
+coef_df <- data.frame(
+  variable = rownames(coef_summary),
+  estimate = coef_summary[, "Estimate"],
+  std_error = coef_summary[, "Std. Error"],
+  z_value = coef_summary[, "z value"],
+  p_value = coef_summary[, "Pr(>|z|)"]
+) %>%
+  filter(variable != "(Intercept)") %>%
+  mutate(
+    # Calculate confidence intervals
+    ci_lower = estimate - 1.96 * std_error,
+    ci_upper = estimate + 1.96 * std_error,
+    # Significance levels
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01 ~ "**",
+      p_value < 0.05 ~ "*",
+      p_value < 0.1 ~ ".",
+      TRUE ~ "NS"
+    ),
+    sig_factor = factor(significance, 
+                       levels = c("***", "**", "*", ".", "NS"))
+  )
+
+# Separate main effects from interactions
+coef_df <- coef_df %>%
+  mutate(
+    effect_type = ifelse(grepl(":", variable), "Interaction", "Main Effect"),
+    # Clean variable names for better display
+    var_clean = gsub("Yes$", "", variable),
+    var_clean = gsub("High ", "", var_clean),
+    var_clean = gsub("cholesterol", "Chol", var_clean)
+  )
+
+## PLOT 1: Coefficient Plot with Confidence Intervals (Main Effects)
+main_effects <- coef_df %>% filter(effect_type == "Main Effect")
+
+p1 <- ggplot(main_effects, aes(x = reorder(var_clean, -p_value), 
+                                y = estimate, color = sig_factor)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.3) +
+  coord_flip() +
+  scale_color_manual(
+    values = c("***" = "#D55E00", "**" = "#E69F00", 
+               "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+    name = "Significance"
+  ) +
+  labs(
+    title = "Main Effects on Diabetes Risk (Ordered by Significance)",
+    subtitle = "Log-odds coefficients with 95% CI",
+    x = "Predictor",
+    y = "Coefficient (log-odds)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.y = element_text(size = 9)
+  )
+
+print(p1)
+
+## PLOT 2: Interaction Effects
+interactions <- coef_df %>% filter(effect_type == "Interaction")
+
+p2 <- ggplot(interactions, aes(x = reorder(var_clean, -p_value), 
+                                y = estimate, color = sig_factor)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.3) +
+  coord_flip() +
+  scale_color_manual(
+    values = c("***" = "#D55E00", "**" = "#E69F00", 
+               "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+    name = "Significance"
+  ) +
+  labs(
+    title = "Interaction Effects on Diabetes Risk (Ordered by Significance)",
+    subtitle = "Log-odds coefficients with 95% CI",
+    x = "Interaction Term",
+    y = "Coefficient (log-odds)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.y = element_text(size = 8)
+  )
+
+print(p2)
+
+## PLOT 3: Odds Ratios (easier interpretation)
+main_effects <- main_effects %>%
+  mutate(
+    OR = exp(estimate),
+    OR_lower = exp(ci_lower),
+    OR_upper = exp(ci_upper)
+  )
+
+p3 <- ggplot(main_effects, aes(x = reorder(var_clean, -p_value), 
+                                y = OR, color = sig_factor)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = OR_lower, ymax = OR_upper), width = 0.3) +
+  coord_flip() +
+  scale_color_manual(
+    values = c("***" = "#D55E00", "**" = "#E69F00", 
+               "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+    name = "Significance"
+  ) +
+  scale_y_continuous(trans = "log10") +
+  labs(
+    title = "Odds Ratios for Main Effects (Ordered by Significance)",
+    subtitle = "OR > 1: increased diabetes risk | OR < 1: decreased diabetes risk",
+    x = "Predictor",
+    y = "Odds Ratio (log scale)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.y = element_text(size = 9)
+  )
+
+print(p3)
+
+## PLOT 4: Top 20 Most Significant Effects (combined)
+top20 <- coef_df %>%
+  arrange(p_value) %>%
+  head(20) %>%
+  mutate(
+    OR = exp(estimate),
+    direction = ifelse(estimate > 0, "Increases Risk", "Decreases Risk")
+  )
+
+p4 <- ggplot(top20, aes(x = reorder(var_clean, -p_value), 
+                        y = estimate, fill = direction)) +
+  geom_col() +
+  geom_text(aes(label = significance), 
+            hjust = ifelse(top20$estimate > 0, -0.3, 1.3),
+            size = 3) +
+  coord_flip() +
+  scale_fill_manual(values = c("Increases Risk" = "#D55E00", 
+                                "Decreases Risk" = "#0072B2")) +
+  labs(
+    title = "Top 20 Most Significant Predictors",
+    subtitle = "Ranked by statistical significance",
+    x = "Predictor",
+    y = "Coefficient (log-odds)",
+    fill = "Effect Direction"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "bottom"
+  )
+
+print(p4)
+
+## Save all plots to files with appropriate sizes
+
+# Plot 1: Main Effects - tall plot to accommodate many variables
+ggsave("plot1_main_effects.png", plot = p1, 
+       width = 10, height = 14, dpi = 300, bg = "white")
+
+# Plot 2: Interaction Effects - medium height
+ggsave("plot2_interactions.png", plot = p2, 
+       width = 10, height = 8, dpi = 300, bg = "white")
+
+# Plot 3: Odds Ratios - tall plot for clarity
+ggsave("plot3_odds_ratios.png", plot = p3, 
+       width = 10, height = 14, dpi = 300, bg = "white")
+
+# Plot 4: Top 20 Most Significant
+ggsave("plot4_top20_significant.png", plot = p4, 
+       width = 10, height = 8, dpi = 300, bg = "white")
+
+# Optional: Save as PDF for publication quality
+ggsave("plot1_main_effects.pdf", plot = p1, 
+       width = 10, height = 14)
+ggsave("plot2_interactions.pdf", plot = p2, 
+       width = 10, height = 8)
+ggsave("plot3_odds_ratios.pdf", plot = p3, 
+       width = 10, height = 14)
+ggsave("plot4_top20_significant.pdf", plot = p4, 
+       width = 10, height = 8)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Extract coefficients, standard errors, and p-values
+coef_summary <- summary(fit1_int_final)$coefficients
+coef_df <- data.frame(
+  variable = rownames(coef_summary),
+  estimate = coef_summary[, "Estimate"],
+  std_error = coef_summary[, "Std. Error"],
+  z_value = coef_summary[, "z value"],
+  p_value = coef_summary[, "Pr(>|z|)"]
+) %>%
+  filter(variable != "(Intercept)") %>%
+  mutate(
+    # Calculate confidence intervals
+    ci_lower = estimate - 1.96 * std_error,
+    ci_upper = estimate + 1.96 * std_error,
+    # Significance levels
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01 ~ "**",
+      p_value < 0.05 ~ "*",
+      p_value < 0.1 ~ ".",
+      TRUE ~ "NS"
+    ),
+    sig_factor = factor(significance, 
+                        levels = c("***", "**", "*", ".", "NS")),
+    effect_type = ifelse(grepl(":", variable), "Interaction", "Main Effect"),
+    var_clean = gsub("Yes$", "", variable),
+    var_clean = gsub("High ", "", var_clean),
+    var_clean = gsub("cholesterol", "Chol", var_clean)
+  )
+
+# 🔹 Only keep significant results (p < 0.05)
+coef_sig <- coef_df %>% filter(p_value < 0.05)
+
+# Separate main effects and interactions
+main_effects <- coef_sig %>% filter(effect_type == "Main Effect")
+interactions <- coef_sig %>% filter(effect_type == "Interaction")
+
+# 🔹 Plot 1: Main Effects (Significant Only)
+p1 <- ggplot(main_effects, aes(x = reorder(var_clean, -p_value),
+                               y = estimate, color = sig_factor)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.3) +
+  coord_flip() +
+  scale_color_manual(
+    values = c("***" = "#D55E00", "**" = "#E69F00", "*" = "#56B4E9"),
+    name = "Significance"
+  ) +
+  labs(
+    title = "Main Effects on Diabetes Risk (Significant Predictors)",
+    subtitle = "Log-odds coefficients with 95% CI (p < 0.05)",
+    x = "Predictor",
+    y = "Coefficient (log-odds)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.y = element_text(size = 9)
+  )
+
+print(p1)
+
+# 🔹 Plot 2: Interaction Effects (Significant Only)
+p2 <- ggplot(interactions, aes(x = reorder(var_clean, -p_value),
+                               y = estimate, color = sig_factor)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.3) +
+  coord_flip() +
+  scale_color_manual(
+    values = c("***" = "#D55E00", "**" = "#E69F00", "*" = "#56B4E9"),
+    name = "Significance"
+  ) +
+  labs(
+    title = "Interaction Effects on Diabetes Risk (Significant Predictors)",
+    subtitle = "Log-odds coefficients with 95% CI (p < 0.05)",
+    x = "Interaction Term",
+    y = "Coefficient (log-odds)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.y = element_text(size = 8)
+  )
+
+print(p2)
+
+# Plot 1: Main Effects - tall plot to accommodate many variables
+ggsave("p1.png", plot = p1, 
+       width = 10, height = 8, dpi = 300, bg = "white")
+
+# Plot 2: Interaction Effects - medium height
+ggsave("p2.png", plot = p2, 
+       width = 10, height = 8, dpi = 300, bg = "white")
+```
+
+
+```{r}
+## PLOT 5: Odds Ratios for Interaction Effects (easier interpretation)
+interactions <- interactions %>%
+  mutate(
+    OR = exp(estimate),
+    OR_lower = exp(ci_lower),
+    OR_upper = exp(ci_upper)
+  )
+
+p5 <- ggplot(interactions, aes(x = reorder(var_clean, -p_value), 
+                                y = OR, color = sig_factor)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = OR_lower, ymax = OR_upper), width = 0.3) +
+  coord_flip() +
+  scale_color_manual(
+    values = c("***" = "#D55E00", "**" = "#E69F00", 
+               "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+    name = "Significance"
+  ) +
+  scale_y_continuous(trans = "log10") +
+  labs(
+    title = "Odds Ratios for Interaction Effects (Ordered by Significance)",
+    x = "Interaction Term",
+    y = "Odds Ratio (log scale)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.y = element_text(size = 8)
+  )
+
+print(p5)
+
+# Save the plot
+ggsave("plot5_interaction_odds_ratios.png", plot = p5, 
+       width = 10, height = 8, dpi = 300, bg = "white")
+
+ggsave("plot5_interaction_odds_ratios.pdf", plot = p5, 
+       width = 10, height = 8)
+```
+
+
+
+
+```{r}
+#Return these variables to factor
+dbts_df <- dbts_df %>%
+  mutate(
+    GenHlth = factor(GenHlth, ordered = FALSE),
+    Age = factor(Age, ordered = FALSE),
+    Education = factor(Education, ordered = FALSE),
+    Income = factor(Income, ordered = FALSE)
+  )
+```
+
+
+## Baseline Categorical Logit Model
+
+```{r}
+library(VGAM)
+fit3 <- vglm(Diabetes_012 ~ HighBP + HighChol + CholCheck + BMI + Smoker + 
+    Stroke + HeartDiseaseorAttack + PhysActivity + Fruits + Veggies +  HvyAlcoholConsump + NoDocbcCost + GenHlth + PhysHlth + DiffWalk + Sex + Age + Education + Income, data = dbts_df, family = multinomial(refLevel = "No diabetes"))
+#summary(fit3)
+```
+
+```{r}
+AIC(fit3)
+```
+
+```{r}
+fit3_int <- vglm(Diabetes_012 ~ HighBP + HighChol + CholCheck + BMI + Smoker + 
+    Stroke + HeartDiseaseorAttack + PhysActivity + Fruits + Veggies +  HvyAlcoholConsump + NoDocbcCost + GenHlth + PhysHlth + DiffWalk + Sex + Age + Education + Income + BMI:Age + GenHlth:PhysHlth + HighChol:HeartDiseaseorAttack + Sex:Age + BMI:PhysActivity  + HvyAlcoholConsump:Age + Smoker:Age, data = dbts_df, family = multinomial(refLevel = "No diabetes"))
+
+
+AIC(fit3_int)
+```
+
+
+```{r}
+levels(dbts_df$Diabetes_012)
+```
+
+```{r}
+summary(fit3_int)
+```
+
+```{r}
+VGAM::lrtest(fit3, fit3_int)
+```
+
+```{r}
+summary(fit3_int)
+```
+
+```{r}
+coef(fit3_int, matrix = TRUE)
+```
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(VGAM)
+
+# Extract coefficients from VGAM multinomial model
+coef_summary <- summary(fit3_int)@coef3
+
+# VGAM returns coefficients for each response level (Prediabetes and Diabetes)
+# We'll process both levels
+
+# Create a data frame from coefficients
+coef_df <- data.frame(
+  variable = rownames(coef_summary),
+  estimate = coef_summary[, "Estimate"],
+  std_error = coef_summary[, "Std. Error"],
+  z_value = coef_summary[, "z value"],
+  p_value = coef_summary[, "Pr(>|z|)"]
+) %>%
+  filter(!grepl("Intercept", variable)) %>%
+  mutate(
+    # Extract outcome level from variable name
+    outcome = case_when(
+      grepl(":1$", variable) ~ "Prediabetes",
+      grepl(":2$", variable) ~ "Diabetes",
+      TRUE ~ "Unknown"
+    ),
+    # Clean variable name (remove :1 and :2 suffixes)
+    var_original = gsub(":1$|:2$", "", variable),
+    # Calculate confidence intervals
+    ci_lower = estimate - 1.96 * std_error,
+    ci_upper = estimate + 1.96 * std_error,
+    # Significance levels
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01 ~ "**",
+      p_value < 0.05 ~ "*",
+      p_value < 0.1 ~ ".",
+      TRUE ~ "NS"
+    ),
+    sig_factor = factor(significance, 
+                       levels = c("***", "**", "*", ".", "NS"))
+  )
+
+# Separate main effects from interactions (if any)
+coef_df <- coef_df %>%
+  mutate(
+    effect_type = ifelse(grepl(":", var_original), "Interaction", "Main Effect"),
+    # Clean variable names for better display
+    var_clean = gsub("Yes$", "", var_original),
+    var_clean = gsub("High ", "High-", var_clean),
+    var_clean = gsub("HeartDiseaseorAttack", "HeartDisease", var_clean)
+  )
+
+## PLOT 1: Coefficient Plot with Confidence Intervals (Main Effects)
+main_effects <- coef_df %>% filter(effect_type == "Main Effect")
+
+p1 <- ggplot(main_effects, aes(x = reorder(var_clean, -p_value), 
+                                y = estimate, color = sig_factor)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3, position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), 
+                width = 0.3, position = position_dodge(width = 0.5)) +
+  coord_flip() +
+  facet_wrap(~outcome, ncol = 2) +
+  scale_color_manual(
+    values = c("***" = "#D55E00", "**" = "#E69F00", 
+               "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+    name = "Significance"
+  ) +
+  labs(
+    title = "Main Effects on Diabetes/Prediabetes Risk (Ordered by Significance)",
+    subtitle = "Log-odds coefficients with 95% CI | Reference: No diabetes",
+    x = "Predictor",
+    y = "Coefficient (log-odds)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.y = element_text(size = 8),
+    strip.text = element_text(face = "bold", size = 11)
+  )
+
+print(p1)
+
+## PLOT 2: Interaction Effects (if any exist)
+interactions <- coef_df %>% filter(effect_type == "Interaction")
+
+if (nrow(interactions) > 0) {
+  p2 <- ggplot(interactions, aes(x = reorder(var_clean, -p_value), 
+                                  y = estimate, color = sig_factor)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    geom_point(size = 3, position = position_dodge(width = 0.5)) +
+    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), 
+                  width = 0.3, position = position_dodge(width = 0.5)) +
+    coord_flip() +
+    facet_wrap(~outcome, ncol = 2) +
+    scale_color_manual(
+      values = c("***" = "#D55E00", "**" = "#E69F00", 
+                 "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+      name = "Significance"
+    ) +
+    labs(
+      title = "Interaction Effects on Diabetes/Prediabetes Risk",
+      subtitle = "Log-odds coefficients with 95% CI",
+      x = "Interaction Term",
+      y = "Coefficient (log-odds)"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      axis.text.y = element_text(size = 8),
+      strip.text = element_text(face = "bold", size = 11)
+    )
+  
+  print(p2)
+} else {
+  cat("No interaction terms in this model.\n")
+  p2 <- NULL
+}
+
+## PLOT 3: Odds Ratios (easier interpretation)
+main_effects <- main_effects %>%
+  mutate(
+    OR = exp(estimate),
+    OR_lower = exp(ci_lower),
+    OR_upper = exp(ci_upper)
+  )
+
+p3 <- ggplot(main_effects, aes(x = reorder(var_clean, -p_value), 
+                                y = OR, color = sig_factor)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3, position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = OR_lower, ymax = OR_upper), 
+                width = 0.3, position = position_dodge(width = 0.5)) +
+  coord_flip() +
+  facet_wrap(~outcome, ncol = 2) +
+  scale_color_manual(
+    values = c("***" = "#D55E00", "**" = "#E69F00", 
+               "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+    name = "Significance"
+  ) +
+  scale_y_continuous(trans = "log10", 
+                     breaks = c(0.1, 0.5, 1, 2, 5, 10, 20)) +
+  labs(
+    title = "Odds Ratios for Main Effects (Ordered by Significance)",
+    subtitle = "OR > 1: increased risk | OR < 1: decreased risk | Reference: No diabetes",
+    x = "Predictor",
+    y = "Odds Ratio (log scale)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.y = element_text(size = 8),
+    strip.text = element_text(face = "bold", size = 11)
+  )
+
+print(p3)
+
+## PLOT 4: Top 20 Most Significant Effects (combined across outcomes)
+top20 <- coef_df %>%
+  filter(effect_type == "Main Effect") %>%
+  arrange(p_value) %>%
+  group_by(var_clean) %>%
+  slice_min(p_value, n = 1) %>%
+  ungroup() %>%
+  head(20) %>%
+  mutate(
+    OR = exp(estimate),
+    direction = ifelse(estimate > 0, "Increases Risk", "Decreases Risk")
+  )
+
+p4 <- ggplot(top20, aes(x = reorder(var_clean, -p_value), 
+                        y = estimate, fill = direction)) +
+  geom_col() +
+  geom_text(aes(label = significance), 
+            hjust = ifelse(top20$estimate > 0, -0.3, 1.3),
+            size = 3) +
+  coord_flip() +
+  facet_wrap(~outcome, ncol = 2) +
+  scale_fill_manual(values = c("Increases Risk" = "#D55E00", 
+                                "Decreases Risk" = "#0072B2")) +
+  labs(
+    title = "Top 20 Most Significant Predictors",
+    subtitle = "Ranked by statistical significance",
+    x = "Predictor",
+    y = "Coefficient (log-odds)",
+    fill = "Effect Direction"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold", size = 11)
+  )
+
+print(p4)
+
+## PLOT 5: Odds Ratios for Interaction Effects (if applicable)
+if (nrow(interactions) > 0) {
+  interactions <- interactions %>%
+    mutate(
+      OR = exp(estimate),
+      OR_lower = exp(ci_lower),
+      OR_upper = exp(ci_upper)
+    )
+  
+  p5 <- ggplot(interactions, aes(x = reorder(var_clean, -p_value), 
+                                  y = OR, color = sig_factor)) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+    geom_point(size = 3, position = position_dodge(width = 0.5)) +
+    geom_errorbar(aes(ymin = OR_lower, ymax = OR_upper), 
+                  width = 0.3, position = position_dodge(width = 0.5)) +
+    coord_flip() +
+    facet_wrap(~outcome, ncol = 2) +
+    scale_color_manual(
+      values = c("***" = "#D55E00", "**" = "#E69F00", 
+                 "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+      name = "Significance"
+    ) +
+    scale_y_continuous(trans = "log10") +
+    labs(
+      title = "Odds Ratios for Interaction Effects",
+      subtitle = "OR > 1: synergistic effect | OR < 1: antagonistic effect",
+      x = "Interaction Term",
+      y = "Odds Ratio (log scale)"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      axis.text.y = element_text(size = 8),
+      strip.text = element_text(face = "bold", size = 11)
+    )
+  
+  print(p5)
+} else {
+  p5 <- NULL
+}
+
+## Save all plots to files with appropriate sizes
+
+# Plot 1: Main Effects - tall plot to accommodate many variables
+ggsave("multinomial_plot1_main_effects.png", plot = p1, 
+       width = 12, height = 16, dpi = 300, bg = "white")
+
+# Plot 2: Interaction Effects (if exists)
+if (!is.null(p2)) {
+  ggsave("multinomial_plot2_interactions.png", plot = p2, 
+         width = 12, height = 10, dpi = 300, bg = "white")
+}
+
+# Plot 3: Odds Ratios - tall plot for clarity
+ggsave("multinomial_plot3_odds_ratios.png", plot = p3, 
+       width = 12, height = 16, dpi = 300, bg = "white")
+
+# Plot 4: Top 20 Most Significant
+ggsave("multinomial_plot4_top20_significant.png", plot = p4, 
+       width = 12, height = 10, dpi = 300, bg = "white")
+
+# Plot 5: Interaction Odds Ratios (if exists)
+if (!is.null(p5)) {
+  ggsave("multinomial_plot5_interaction_odds_ratios.png", plot = p5, 
+         width = 12, height = 10, dpi = 300, bg = "white")
+}
+
+# Optional: Save as PDF for publication quality
+ggsave("multinomial_plot1_main_effects.pdf", plot = p1, 
+       width = 12, height = 16)
+
+if (!is.null(p2)) {
+  ggsave("multinomial_plot2_interactions.pdf", plot = p2, 
+         width = 12, height = 10)
+}
+
+ggsave("multinomial_plot3_odds_ratios.pdf", plot = p3, 
+       width = 12, height = 16)
+
+ggsave("multinomial_plot4_top20_significant.pdf", plot = p4, 
+       width = 12, height = 10)
+
+if (!is.null(p5)) {
+  ggsave("multinomial_plot5_interaction_odds_ratios.pdf", plot = p5, 
+         width = 12, height = 10)
+}
+
+cat("\n✓ All plots generated and saved successfully!\n")
+```
+
+
+```{r}
+main_effects <- coef_df %>%
+  filter(effect_type == "Main Effect", p_value < 0.05)  #Only significant
+
+p1_nn <- ggplot(main_effects, aes(x = reorder(var_clean, -p_value), 
+                                y = estimate, color = sig_factor)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3, position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), 
+                width = 0.3, position = position_dodge(width = 0.5)) +
+  coord_flip() +
+  facet_wrap(~outcome, ncol = 2) +
+  scale_color_manual(
+    values = c("***" = "#D55E00", "**" = "#E69F00", 
+               "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+    name = "Significance"
+  ) +
+  labs(
+    title = "Main Effects on Diabetes/Prediabetes Risk (Ordered by Significance)",
+    subtitle = "Log-odds coefficients with 95% CI | Reference: No diabetes",
+    x = "Predictor",
+    y = "Coefficient (log-odds)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.y = element_text(size = 8),
+    strip.text = element_text(face = "bold", size = 11)
+  )
+
+print(p1_nn)
+
+ggsave("m1.png", plot = p1_nn, 
+       width = 12, height = 10, dpi = 300, bg = "white")
+
+```
+
+```{r}
+
+## PLOT 2: Interaction Effects (if any exist)
+interactions <- coef_df %>%
+  filter(effect_type == "Interaction", p_value < 0.05)  # only significant
+
+
+p2_nn <- ggplot(interactions, aes(x = reorder(var_clean, -p_value), 
+                                  y = estimate, color = sig_factor)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    geom_point(size = 3, position = position_dodge(width = 0.5)) +
+    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), 
+                  width = 0.3, position = position_dodge(width = 0.5)) +
+    coord_flip() +
+    facet_wrap(~outcome, ncol = 2) +
+    scale_color_manual(
+      values = c("***" = "#D55E00", "**" = "#E69F00", 
+                 "*" = "#56B4E9", "." = "#009E73", "NS" = "#CCCCCC"),
+      name = "Significance"
+    ) +
+    labs(
+      title = "Interaction Effects on Diabetes/Prediabetes Risk",
+      subtitle = "Log-odds coefficients with 95% CI",
+      x = "Interaction Term",
+      y = "Coefficient (log-odds)"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      axis.text.y = element_text(size = 8),
+      strip.text = element_text(face = "bold", size = 11)
+    )
+  
+  print(p2_nn)
+  
+  ggsave("m2.png", plot = p2_nn, 
+         width = 12, height = 10, dpi = 300, bg = "white")
+```
+```{r}
+
+top20 <- coef_df %>%
+  arrange(p_value) %>%
+  group_by(outcome, var_clean) %>%   # group by both
+  slice_min(p_value, n = 1) %>%
+  ungroup() %>%
+  filter(p_value < 0.05) %>%
+  group_by(outcome) %>%
+  slice_head(n = 20) %>%             # top 20 per outcome
+  ungroup() %>%
+  mutate(
+    OR = exp(estimate),
+    direction = ifelse(estimate > 0, "Increases Risk", "Decreases Risk")
+  )
+
+# Helper function for reordering within facets
+reorder_within <- function(x, by, within, fun = mean, sep = "___", ...) {
+  new_x <- paste(x, within, sep = sep)
+  stats::reorder(new_x, by, FUN = fun)
+}
+
+scale_x_reordered <- function(..., sep = "___") {
+  reg <- paste0(sep, ".+$")
+  ggplot2::scale_x_discrete(labels = function(x) gsub(reg, "", x), ...)
+}
+
+p4 <- ggplot(top20, aes(x = reorder_within(var_clean, -p_value, outcome), 
+                        y = estimate, fill = direction)) +
+  geom_col() +
+  geom_text(aes(label = significance,
+                hjust = ifelse(estimate > 0, -0.3, 1.3)),
+            size = 2.5) +
+  coord_flip() +
+  facet_wrap(~outcome, ncol = 2, scales = "free_y") +
+  scale_x_reordered() +
+  scale_fill_manual(values = c("Increases Risk" = "#D55E00", 
+                               "Decreases Risk" = "#0072B2")) +
+  labs(
+    title = "Top 20 Most Significant Predictors by Outcome",
+    subtitle = "Ranked by statistical significance within each outcome",
+    x = "Predictor",
+    y = "Coefficient (log-odds)",
+    fill = "Effect Direction"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold", size = 11),
+    axis.text.y = element_text(size = 8)
+  )
+
+print(p4)
+
+ggsave("T2.png", plot = p4, 
+         width = 12, height = 10, dpi = 300, bg = "white")
+
+```
+
+
+```{r}
+library(pROC)
+rocplot <- roc(Diabetes_binary ~ fitted(fit1), data=dbts_df)
+plot.roc(rocplot, legacy.axes=TRUE) # Specficity on x axis if legacy.axes=F
+auc(rocplot) # auc = area under ROC curve = concordance index
+```
+
+
+```{r}
+library(MASS)
+stepAIC(fit1)
+```
+
+```{r}
+library(car)
+Anova(fit4)
+influencePlot(fit1,id = T)
+```
+```{r}
+```
+
+
+```{r}
+dbts_df[c(76213,127185,147377,203560,209993,212800),]
+```
+```{r}
+pred.prob <- fitted(fit1)
+pred.prob 
+```
+```{r}
+lp <- predict(fit1, se.fit=TRUE) # linear predictor
+LB <- lp$fit - 1.96*lp$se.fit # confidence bounds for linear predictor
+UB <- lp$fit + 1.96*lp$se.fit # better: use qnorm(0.975) instead of 1.96
+LB.p <- exp(LB)/(1 + exp(LB)) # confidence bounds for P(Y=1)
+UB.p <- exp(UB)/(1 + exp(UB))
+cbind(pred.prob, LB.p, UB.p)
+```
+
+
+```{r}
+library(VGAM)
+
+fit5 <- vglm(Diabetes_012~HighBP + HighChol + CholCheck + BMI + Smoker + 
+    Stroke + HeartDiseaseorAttack + PhysActivity + Fruits + Veggies + 
+    HvyAlcoholConsump + AnyHealthcare + NoDocbcCost + GenHlth + 
+    MentHlth + PhysHlth + DiffWalk + Sex + Age + Education + 
+    Income, data = dbts_df, family = multinomial)
+summary(fit5)
+```
+
+
