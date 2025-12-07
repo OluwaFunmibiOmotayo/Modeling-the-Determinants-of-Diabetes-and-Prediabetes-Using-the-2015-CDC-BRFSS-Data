@@ -55,6 +55,7 @@ All analyses were conducted in **R** using reproducible **R Markdown** workflows
 ---
 
 ## Files in This Repository
+- 'Diabetes:Prediabetes Project Slide.pdf' - Latex presentation Slide
 - `Fasanya_Cat_Paper.Rmd` – RMarkdown used in generating the Journal style paper 
 - `Fasanya_Cat_Paper.pdf` – Journal Style pdf report that contains Main analysis and report 
 - `OluwafunmibiFinalProject.Rmd` – R code for the Analysis  
